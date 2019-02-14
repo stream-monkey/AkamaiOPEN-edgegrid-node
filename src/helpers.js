@@ -26,8 +26,6 @@ module.exports = {
     var contentHash = '',
       preparedBody = request.body || '';
 
-    logger.info("Preparedbody: ", preparedBody);
-
     if (typeof preparedBody === 'object') {
       var postDataNew = '',
         key;
@@ -47,7 +45,7 @@ module.exports = {
 
     logger.info('Body is \"' + preparedBody + '\"');
     logger.debug('PREPARED BODY LENGTH', preparedBody.length);
-
+    
     if (request.method === 'POST' && preparedBody.length > 0) {
       logger.info('Signing content: \"' + preparedBody + '\"');
 

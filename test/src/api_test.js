@@ -143,6 +143,10 @@ describe('Api', function() {
   });
 
   describe('#auth', function() {
+    it('should be chainable', function(){
+      assert.deepEqual(this.api, this.api.auth({ path: '/foo' }));
+    });
+
     describe('when minimal request options are passed', function() {
       beforeEach(function() {
         this.api.auth({
@@ -207,6 +211,11 @@ describe('Api', function() {
   });
 
   describe('#send', function() {
+
+    it('should be chainable', function(){
+      assert.deepEqual(this.api, this.api.auth({ path: '/foo' }).send());
+    });
+
     describe('when authentication is done with a simple options object specifying only a path', function() {
       beforeEach(function() {
         nock('https://base.com')
@@ -221,8 +230,8 @@ describe('Api', function() {
           path: '/foo'
         });
 
-        this.api.send(function(data) {
-          assert.equal(JSON.parse(data).foo, 'bar');
+        this.api.send(function(err, resp, body) {
+          assert.equal(JSON.parse(body).foo, 'bar');
           done();
         });
       });
@@ -243,8 +252,8 @@ describe('Api', function() {
           method: 'POST'
         });
 
-        this.api.send(function(data) {
-          assert.equal(JSON.parse(data).foo, 'bar');
+        this.api.send(function(err, resp, body) {
+          assert.equal(JSON.parse(body).foo, 'bar');
           done();
         });
       });
@@ -266,8 +275,24 @@ describe('Api', function() {
           path: '/foo',
         });
 
-        this.api.send(function(data) {
-          assert.equal(JSON.parse(data).bar, 'bim');
+        this.api.send(function(err, resp, body) {
+          assert.equal(JSON.parse(body).bar, 'bim');
+          done();
+        });
+      });
+    });
+    describe('when the initial request fails', function() {
+      it('correctly handles the error in the callback', function(done) {
+        nock('https://base.com')
+          .get('/foo')
+          .replyWithError('something awful happened');
+
+        this.api.auth({
+          path: '/foo',
+        });
+
+        this.api.send(function (data) {
+          assert.equal(data.message, 'something awful happened');
           done();
         });
       });

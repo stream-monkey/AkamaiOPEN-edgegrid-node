@@ -12,31 +12,55 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-var fs = require('fs');
+var fs = require('fs'),
+  logger = require('./logger');
 
 function getSection(lines, sectionName) {
-  var match = /\[(.*)\]/,
-    lineMatch,
-    section;
+  var match = /^\s*\[(.*)\]/
+  ,   section;
 
-  lines.forEach(function(line, i) {
-    lineMatch = line.match(match);
+  lines.some(function(line, i) {
+    var lineMatch = line.match(match)
+    ,   isMatch = lineMatch !== null && lineMatch[1] === sectionName;
 
-    if (lineMatch && lineMatch[1] === sectionName) {
-      section = lines.slice(i + 1, i + 5);
+    if (isMatch) {
+      // go through section until we find a new one
+      section = [];
+      lines.slice(i + 1, lines.length).some(function(line) {
+        var isMatch = line.match(match) !== null;
+        if (!isMatch) {
+          section.push(line);
+        }
+        return isMatch;
+      });
     }
+    return isMatch;
   });
-
   return section;
 }
 
 function validatedConfig(config) {
+
+  if (!(config.host && config.access_token &&
+        config.client_secret && config.client_token)) {
+          var errorMessage = "";
+          var tokens = 
+            ['client_token', 'client_secret','access_token','host'];
+          tokens.forEach(function(token) {
+            if (!config[token]) {
+              errorMessage += "\nMissing: " + token;
+            }
+          })
+          console.log('Missing part of the configuration:\n' + errorMessage);
+          return {};
+        }
+
   if (config.host.indexOf('https://') > -1) {
     return config;
   }
 
   config.host = 'https://' + config.host;
-
+      
   return config;
 }
 
@@ -44,25 +68,72 @@ function buildObj(configs) {
   var result = {},
     index,
     key,
-    val;
+    val,
+    parsedValue,
+    isComment;
 
   configs.forEach(function(config) {
+    config = config.trim();
+    isComent = config.indexOf(";") === 0;
     index = config.indexOf('=');
-    key = config.substr(0, index);
-    val = config.substr(index + 1, config.length - index - 1);
+    if (index > -1 && !isComment) {
+      key = config.substr(0, index);
+      val = config.substring(index + 1);
+      // remove inline comments
+      parsedValue = val.replace(/^\s*(['"])((?:\\\1|.)*?)\1\s*(?:;.*)?$/, "$2");
+      if (parsedValue === val) {
+        // the value is not contained in matched quotation marks
+        parsedValue = val.replace(/\s*([^;]+)\s*;?.*$/, "$1");
+      }
+      // Remove trailing slash as if often found in the host property
+      if (parsedValue.endsWith("/")) {
+        parsedValue = parsedValue.substr(0, parsedValue.length - 1);
+      }
 
-    // Remove trailing slash as if often found in the host property
-    val = val.replace(/\/$/, '');
-
-    result[key.trim()] = val.trim();
+      result[key.trim()] = parsedValue;
+    }
   });
 
   return validatedConfig(result);
 }
 
+function readEnv(section) {
+  // If any are set, we're committed
+  var envConf = {};
+  var envPrefix = "AKAMAI_" + section.toUpperCase()
+  var tokens = 
+    ['client_token', 'client_secret','access_token','host'];
+
+  tokens.forEach(function(token){
+    var envcheck = envPrefix + "_" + token.toUpperCase()
+    if (process.env[envcheck]) {
+      envConf[token] = process.env[envcheck];
+    }
+  })
+  
+  if (Object.keys(envConf).length > 0) {
+    console.log("Using configuration from environment variables")
+    return validatedConfig(envConf);
+  }
+  return {};
+}
+
 module.exports = function(path, conf) {
+  var confSection = conf || 'default'
+  var envConf = readEnv(confSection);
+  if (envConf['host']) {
+    return envConf;
+  }
+
+  if (!path) {
+    if (process.env.EDGEGRID_ENV !== 'test') {
+      logger.error('No .edgerc path');
+    }
+
+    throw new Error('No edgerc path');
+  }
   var edgerc = fs.readFileSync(path).toString().split('\n'),
-    confSection = conf || 'default',
+    confSection,
     confData = getSection(edgerc, confSection);
 
   if (!confData) {
